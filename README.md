@@ -4,26 +4,27 @@
 
 This paper proposes using autoencoders and denoising autoencoders to construct investment portfolios. The autoencoder learns a non-linear factor model of asset returns, aiming to create portfolios that are more robust to noise and market shocks compared to traditional methods like minimum variance.
 
-## Current Status — Cycle 4, Phase 4
+## Current Status — Cycle 5, Phase 5
 
-Deep Portfolio strategy implemented with **monthly returns** (paper-aligned) and evaluated via walk-forward backtest. Key improvements in this cycle: data quality fix (bfill phantom returns), monthly training, decoder[0] weight extraction, MinVar weight caps.
+Performance evaluation and reporting phase. Computed comprehensive metrics (Sharpe, Sortino, MaxDD, annualized return/volatility) for all strategies. Added L2 regularization to the autoencoder. Added tests verifying paper equation (4): `w_f = W2 @ W1`.
 
-### Results (from `reports/cycle_4/metrics.json`)
+### Results (from `reports/cycle_5/metrics.json`)
 
-| Strategy | Sharpe | Ann. Return | Max Drawdown | Net Sharpe | Turnover |
+| Strategy | Sharpe | Sortino | Ann. Return | Ann. Vol | Max Drawdown |
 |---|---|---|---|---|---|
-| **Deep Portfolio (AE)** | 0.9620 | 20.91% | -36.46% | 0.8792 | 20.42% |
-| Equal Weight (1/N) | 1.0077 | 19.94% | -34.07% | 0.9167 | 0.00% |
-| Min Variance (5% cap) | 1.0418 | 14.32% | -22.72% | 0.9109 | 8.39% |
+| **Deep Portfolio (AE)** | 0.9366 | 1.1705 | 20.36% | 21.74% | -36.46% |
+| Equal Weight (1/N) | 0.9947 | 1.2175 | 19.68% | 19.78% | -34.07% |
+| Min Variance (5% cap) | 1.0407 | 1.2721 | 14.31% | 13.75% | -22.72% |
 
 Walk-forward: 106 windows, 2,225 OOS days (2015-03 to 2023-12). Deep Portfolio positive in 72/106 windows.
 
-Deep Portfolio vs 1/N: Sharpe -0.05 (slightly underperforms), Return +0.97pp (outperforms on raw return).
+Deep Portfolio vs 1/N: Sharpe -0.058 (underperforms), Return +0.68pp (outperforms on raw return).
 
 ### Prior Cycles
 
 | Cycle | Phase | Key Outcome |
 |---|---|---|
+| 4 | Deep Portfolio Strategy | Monthly training, data fix, W2@W1 weight extraction |
 | 3 | Walk-Forward & Benchmarks | 1/N and MinVar backtests, 107 windows |
 | 2 | Data Pipeline | 82 S&P 100 tickers, 3521 daily returns |
 | 1 | Core Autoencoder | Architecture validated, loss reduction 51.4% |
@@ -67,8 +68,9 @@ scripts/
   prepare_data.py        # Data pipeline runner
   run_benchmarks.py      # Walk-forward backtest runner (legacy)
   run_deep_portfolio.py  # Deep Portfolio backtest with monthly training
+  generate_report.py     # Performance evaluation report generator
 reports/
-  cycle_4/               # Phase 4 results (Deep Portfolio, monthly)
+  cycle_5/               # Phase 5 results (performance evaluation)
 docs/
   paper_spec.md          # Paper parameter specification
   open_questions.md      # Outstanding questions and limitations

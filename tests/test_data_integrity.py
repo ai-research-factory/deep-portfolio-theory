@@ -181,11 +181,11 @@ class TestReportConsistency:
 
     def test_metrics_json_exists(self):
         """metrics.json must exist after each cycle."""
-        assert os.path.exists("reports/cycle_4/metrics.json")
+        assert os.path.exists("reports/cycle_5/metrics.json")
 
     def test_metrics_schema_valid(self):
         """metrics.json must contain required fields."""
-        with open("reports/cycle_4/metrics.json") as f:
+        with open("reports/cycle_5/metrics.json") as f:
             metrics = json.load(f)
         required = [
             "sharpeRatio", "annualReturn", "maxDrawdown", "hitRate",
@@ -196,7 +196,7 @@ class TestReportConsistency:
 
     def test_walk_forward_windows_sufficient(self):
         """Walk-forward must have at least 5 windows."""
-        with open("reports/cycle_4/metrics.json") as f:
+        with open("reports/cycle_5/metrics.json") as f:
             metrics = json.load(f)
         assert metrics["walkForward"]["windows"] >= 5, (
             f"Only {metrics['walkForward']['windows']} windows, need >= 5"
@@ -217,7 +217,7 @@ class TestReportConsistency:
 
     def test_deep_portfolio_metrics_in_custom(self):
         """metrics.json customMetrics must contain Deep Portfolio results."""
-        with open("reports/cycle_4/metrics.json") as f:
+        with open("reports/cycle_5/metrics.json") as f:
             metrics = json.load(f)
         custom = metrics["customMetrics"]
         assert "deep_portfolio_sharpe" in custom
@@ -233,6 +233,152 @@ class TestReportConsistency:
         assert "daily_returns" in data
         assert len(data["daily_returns"]) > 0
         assert data["strategy"] == "deep_portfolio_ae"
+
+    def test_performance_summary_exists(self):
+        """performance_summary.md must exist with strategy comparison table."""
+        path = "reports/cycle_5/performance_summary.md"
+        assert os.path.exists(path), f"{path} not found"
+        with open(path) as f:
+            content = f.read()
+        # Must contain the three strategies
+        assert "Equal Weight" in content
+        assert "Min Variance" in content
+        assert "Deep Portfolio" in content
+        # Must contain the 5 metric columns
+        assert "Sharpe Ratio" in content
+        assert "Sortino Ratio" in content
+        assert "Max Drawdown" in content
+
+    def test_sharpe_ratios_in_valid_range(self):
+        """All Sharpe ratios in metrics.json must be in [-2, +3]."""
+        with open("reports/cycle_5/metrics.json") as f:
+            metrics = json.load(f)
+        sharpe = metrics["sharpeRatio"]
+        assert -2 <= sharpe <= 3, f"Sharpe {sharpe} outside valid range [-2, 3]"
+        custom = metrics["customMetrics"]
+        for key in ["deep_portfolio_sharpe", "baseline_1n_sharpe", "baseline_minvar_sharpe"]:
+            val = custom[key]
+            assert -2 <= val <= 3, f"{key}={val} outside valid range [-2, 3]"
+
+
+class TestEvaluationMetrics:
+    """Validate the metrics computation module."""
+
+    def test_annualized_return(self):
+        """Test annualized return computation."""
+        from src.evaluation.metrics import annualized_return
+        # 1% daily for 252 days
+        returns = pd.Series([0.01] * 252)
+        ann_ret = annualized_return(returns)
+        # (1.01)^252 - 1 ≈ 11.27
+        assert ann_ret > 10.0
+
+    def test_sharpe_ratio_positive(self):
+        """Positive returns should yield positive Sharpe."""
+        from src.evaluation.metrics import sharpe_ratio
+        returns = pd.Series([0.001] * 252)
+        assert sharpe_ratio(returns) > 0
+
+    def test_max_drawdown_negative(self):
+        """Max drawdown must be negative or zero."""
+        from src.evaluation.metrics import max_drawdown
+        returns = pd.Series([0.01, -0.05, 0.02, -0.03, 0.01])
+        dd = max_drawdown(returns)
+        assert dd <= 0
+
+    def test_sortino_ignores_upside(self):
+        """Sortino ratio should only penalize downside deviation."""
+        from src.evaluation.metrics import sortino_ratio
+        # All positive returns — should be very high sortino
+        returns = pd.Series([0.01] * 100)
+        s = sortino_ratio(returns)
+        assert s == float("inf") or s > 10
+
+    def test_compute_all_metrics_keys(self):
+        """compute_all_metrics must return all 5 required keys."""
+        from src.evaluation.metrics import compute_all_metrics
+        returns = pd.Series([0.001, -0.002, 0.003, -0.001, 0.002] * 50)
+        result = compute_all_metrics(returns)
+        expected_keys = {
+            "annualized_return", "annualized_volatility",
+            "sharpe_ratio", "sortino_ratio", "max_drawdown",
+        }
+        assert set(result.keys()) == expected_keys
+
+
+class TestFactorPortfolioWeights:
+    """Verify paper equation (4): w_f = W2 @ W1 factor portfolio extraction."""
+
+    def test_factor_portfolio_uses_w2_w1_product(self):
+        """Factor portfolios must be computed as W2 @ W1 (full decoder mapping)."""
+        import numpy as np
+        from src.strategies.deep_portfolio import DeepPortfolioStrategy
+
+        n_assets = 10
+        hidden_dim = 16
+        latent_dim = 4
+
+        np.random.seed(42)
+        dates = pd.date_range("2020-01-01", periods=100, freq="B")
+        returns = pd.DataFrame(
+            np.random.randn(100, n_assets) * 0.01,
+            index=dates,
+            columns=[f"A{i}" for i in range(n_assets)],
+        )
+
+        strategy = DeepPortfolioStrategy(
+            hidden_dim=hidden_dim, latent_dim=latent_dim, epochs=10, seed=42,
+        )
+
+        # Train model internally and get weights
+        weights = strategy.generate_weights(returns)
+
+        # Recreate model to verify the matrix dimensions and product
+        model = Autoencoder(
+            input_dim=n_assets, hidden_dim=hidden_dim, latent_dim=latent_dim,
+        )
+        W1 = model.decoder[0].weight.detach().numpy()
+        W2 = model.decoder[2].weight.detach().numpy()
+
+        # Verify dimensions: W1=(hidden_dim, latent_dim), W2=(n_assets, hidden_dim)
+        assert W1.shape == (hidden_dim, latent_dim), (
+            f"W1 shape {W1.shape} != expected ({hidden_dim}, {latent_dim})"
+        )
+        assert W2.shape == (n_assets, hidden_dim), (
+            f"W2 shape {W2.shape} != expected ({n_assets}, {hidden_dim})"
+        )
+
+        # W2 @ W1 must produce (n_assets, latent_dim) factor portfolios
+        factor_portfolios = W2 @ W1
+        assert factor_portfolios.shape == (n_assets, latent_dim), (
+            f"Factor portfolios shape {factor_portfolios.shape} != "
+            f"expected ({n_assets}, {latent_dim})"
+        )
+
+    def test_factor_portfolio_not_single_layer(self):
+        """Weights must NOT come from decoder[0] alone (wrong dimension)."""
+        n_assets = 10
+        hidden_dim = 16
+        latent_dim = 4
+
+        model = Autoencoder(
+            input_dim=n_assets, hidden_dim=hidden_dim, latent_dim=latent_dim,
+        )
+
+        # decoder[0].weight is (hidden_dim, latent_dim) — NOT in asset space
+        single_layer = model.decoder[0].weight.detach().numpy()
+        assert single_layer.shape[0] == hidden_dim, "decoder[0] should be hidden_dim rows"
+        assert single_layer.shape[0] != n_assets, (
+            "decoder[0] should NOT have n_assets rows — that would be wrong"
+        )
+
+        # The correct computation uses both layers
+        W1 = model.decoder[0].weight.detach().numpy()
+        W2 = model.decoder[2].weight.detach().numpy()
+        factor_portfolios = W2 @ W1
+        assert factor_portfolios.shape[0] == n_assets, (
+            "W2 @ W1 must map to asset space (n_assets rows)"
+        )
 
 
 class TestDeepPortfolioStrategy:

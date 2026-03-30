@@ -20,3 +20,9 @@
    - Factor portfolio selection rather than equal-weight combination
 8. **MinVar with monthly covariance**: The covariance matrix from 60 monthly observations for 82 assets is rank-deficient (rank ≤ 60). Higher shrinkage (0.5) is used when n_samples < n_assets, but results may still be suboptimal.
 9. **Decoder weight interpretation**: The current approach computes factor_portfolios = W2 @ W1 (full decoder mapping) and equal-weight combines them. Alternative approaches include: (a) selecting top-k factors by variance explained, (b) risk-parity weighting of factors.
+
+## Phase 5
+
+10. **L2 regularization tuning**: L2 lambda=0.01 was added as a provisional value per reviewer feedback. The optimal value should be determined via hyperparameter optimization in Phase 7. The current value may be too strong or too weak.
+11. **Sortino ratio computation**: Uses daily downside deviation. An alternative approach would compute the downside deviation from the target return (e.g., risk-free rate) rather than zero. Current implementation uses zero threshold.
+12. **Metric differences from Cycle 4**: The Sharpe ratios computed in Cycle 5 (0.9366 for Deep Portfolio) differ slightly from Cycle 4 (0.9620) because metrics.py uses geometric annualized return while Cycle 4 used arithmetic mean * 252. Both approaches are standard; geometric is more accurate for compounding returns.

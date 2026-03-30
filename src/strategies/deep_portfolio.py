@@ -48,6 +48,7 @@ class DeepPortfolioStrategy:
         learning_rate: float = 0.001,
         batch_size: int = 64,
         seed: int = 42,
+        l2_lambda: float = 0.01,
     ):
         self.hidden_dim = hidden_dim
         self.latent_dim = latent_dim
@@ -55,6 +56,7 @@ class DeepPortfolioStrategy:
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.seed = seed
+        self.l2_lambda = l2_lambda
 
     def generate_weights(self, returns_data: pd.DataFrame) -> np.ndarray:
         """Train autoencoder and extract portfolio weights from decoder.
@@ -79,6 +81,7 @@ class DeepPortfolioStrategy:
             input_dim=n_assets,
             hidden_dim=self.hidden_dim,
             latent_dim=self.latent_dim,
+            l2_lambda=self.l2_lambda,
         )
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=self.learning_rate)
@@ -97,7 +100,7 @@ class DeepPortfolioStrategy:
 
                 optimizer.zero_grad()
                 output = model(batch)
-                loss = criterion(output, batch)
+                loss = criterion(output, batch) + model.l2_penalty()
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
