@@ -7,7 +7,7 @@ proj_8ed17ca5
 PCA, ResidualFactors
 
 ## Current Cycle
-1
+2
 
 ## Objective
 Implement, validate, and iteratively improve the paper's approach with production-quality standards.
@@ -71,7 +71,7 @@ df = df.set_index("timestamp")
 
 ## Preflight チェック（実装開始前に必ず実施）
 
-**Phase の実装コードを書く前に**、以下のチェックを実施し結果を `reports/cycle_1/preflight.md` に保存すること。
+**Phase の実装コードを書く前に**、以下のチェックを実施し結果を `reports/cycle_2/preflight.md` に保存すること。
 
 ### 1. データ境界表
 以下の表を埋めて、未来データ混入がないことを確認:
@@ -107,33 +107,31 @@ df = df.set_index("timestamp")
 
 **preflight.md が作成されるまで、Phase の実装コードに進まないこと。**
 
-## ★ 今回のタスク (Cycle 1)
+## ★ 今回のタスク (Cycle 2)
 
 
-### Phase 1: コアAutoencoderモデルの実装 [Track ]
+### Phase 2: データパイプラインの構築 [Track ]
 
 **Track**:  (A=論文再現 / B=近傍改善 / C=独自探索)
-**ゴール**: PyTorchで基本的なAutoencoderモデルを実装し、合成データで学習が実行できる状態にする。
+**ゴール**: yfinanceを使用して株価データを取得し、リターン計算と前処理を行うパイプラインを構築する。
 
 **具体的な作業指示**:
-1. `src/models/autoencoder.py`を作成します。
-2. `torch.nn.Module`を継承した`Autoencoder`クラスを実装してください。エンコーダとデコーダはそれぞれ2つの線形層を持つ構成とします（例: `Input -> 128 -> 32 (factors) -> 128 -> Output`）。
-3. `src/train.py`を作成し、このスクリプト内で合成データ（例: `torch.rand(1000, 256)`）を生成します。
-4. `Autoencoder`モデルをインスタンス化し、MSELossとAdamオプティマイザを使用して10エポック学習させる簡単な学習ループを実装します。
-5. 学習後のモデルを`models/autoencoder_v1.pth`に、学習中の損失を`reports/cycle_1/loss_log.json`に保存してください。
-6. `README.md`に「本プロジェクトは論文の完全再現ではなく、公開データを用いた縮小版検証である」旨を明記してください。
+1. `src/data/loader.py`を作成します。
+2. S&P 100の構成銘柄リストをハードコードで定義します（80銘柄程度）。
+3. `load_stock_data`関数を実装し、`yfinance.download`を使用して2010-01-01から2023-12-31までの日次調整済み終値を取得します。
+4. 取得した価格データから日次リターンを計算します。NaN値は前方・後方補完（`ffill().bfill()`）で処理してください。
+5. 処理済みのリターンデータを`data/processed/sp100_daily_returns.csv`として保存します。
+6. このローダーを呼び出す`scripts/prepare_data.py`を作成してください。
 
 **期待される出力ファイル**:
-- src/models/autoencoder.py
-- src/train.py
-- models/autoencoder_v1.pth
-- reports/cycle_1/loss_log.json
-- README.md
+- src/data/loader.py
+- scripts/prepare_data.py
+- data/processed/sp100_daily_returns.csv
 
 **受入基準 (これを全て満たすまで完了としない)**:
-- Autoencoderモデルの学習がエラーなく完了する。
-- reports/cycle_1/loss_log.jsonにエポックごとの損失が記録されている。
-- README.mdに縮小版検証である旨が記載されている。
+- sp100_daily_returns.csvが生成され、指定期間のリターンデータが含まれている。
+- 生成されたCSVファイル内にNaN値が存在しない。
+- 銘柄数は80以上、データ行数は3000行以上であること。
 
 
 
@@ -147,15 +145,28 @@ df = df.set_index("timestamp")
 4. 目標は「論文の手法が動くこと」であり、「論文と同じデータを揃えること」ではない
 
 
+## スコア推移
+Cycle 1: 45%
 
 
 
+
+
+## レビューからのフィードバック
+### レビュー改善指示
+1. [object Object]
+2. [object Object]
+3. [object Object]
+### マネージャー指示 (次のアクション)
+1. 【最優先】src/train.pyをリファクタリングし、学習率、エポック数、バッチサイズ、ファイルパスなどのハイパーパラメータがconfigs/default.yamlからHydra経由で読み込まれるように修正する。ハードコードされた値を全て削除すること。
+2. 【重要】tests/test_models.pyを新規作成し、src/models/autoencoder.pyのAutoencoderモデルについて、ダミーのテンソルを入力した際の出力次元が入力次元と一致することをアサートするユニットテストを実装する。
+3. 【推奨】開発プロセス遵守のため、Cycle 2の作業内容を記述したpreflight.mdを作成する。このファイルには、本サイクルで指摘された設定の外部化とテスト追加の計画を含めること。
 
 
 ## 全体Phase計画 (参考)
 
-→ Phase 1: コアAutoencoderモデルの実装 — PyTorchで基本的なAutoencoderモデルを実装し、合成データで学習が実行できる状態にする。
-  Phase 2: データパイプラインの構築 — yfinanceを使用して株価データを取得し、リターン計算と前処理を行うパイプラインを構築する。
+✓ Phase 1: コアAutoencoderモデルの実装 — PyTorchで基本的なAutoencoderモデルを実装し、合成データで学習が実行できる状態にする。
+→ Phase 2: データパイプラインの構築 — yfinanceを使用して株価データを取得し、リターン計算と前処理を行うパイプラインを構築する。
   Phase 3: Walk-Forward評価とベンチマーク実装 — Walk-forward検証の枠組みを実装し、1/Nと最小分散ポートフォリオのバックテストを実行する。
   Phase 4: Deep Portfolio戦略の実装 — AutoencoderをWalk-Forwardの枠組みに統合し、Deep Portfolio戦略のバックテストを実行する。
   Phase 5: パフォーマンス評価指標とレポート作成 — 全戦略のパフォーマンスを計算・比較するレポートを生成する。
@@ -250,9 +261,9 @@ df = df.set_index("timestamp")
 
 ## 出力ファイル
 以下のファイルを保存してから完了すること:
-- `reports/cycle_1/preflight.md` — Preflight チェック結果（必須、実装前に作成）
-- `reports/cycle_1/metrics.json` — 下記スキーマに従う（必須）
-- `reports/cycle_1/technical_findings.md` — 実装内容、結果、観察事項
+- `reports/cycle_2/preflight.md` — Preflight チェック結果（必須、実装前に作成）
+- `reports/cycle_2/metrics.json` — 下記スキーマに従う（必須）
+- `reports/cycle_2/technical_findings.md` — 実装内容、結果、観察事項
 
 ### metrics.json 必須スキーマ（Single Source of Truth）
 ```json
