@@ -1,0 +1,33 @@
+{
+  "sharpeRatio": 0.0,
+  "annualReturn": 0.0,
+  "maxDrawdown": 0.0,
+  "hitRate": 0.0,
+  "totalTrades": 0,
+  "transactionCosts": {
+    "feeBps": 10,
+    "slippageBps": 5,
+    "netSharpe": 0.0
+  },
+  "walkForward": {
+    "windows": 0,
+    "positiveWindows": 0,
+    "avgOosSharpe": 0.0
+  },
+  "customMetrics": {
+    "phase": 1,
+    "task": "Core Autoencoder Implementation",
+    "training_loss_epoch_1": 0.339305,
+    "training_loss_epoch_10": 0.16484,
+    "loss_reduction_pct": 51.4,
+    "input_dim": 256,
+    "hidden_dim": 128,
+    "latent_dim": 32,
+    "n_samples": 1000,
+    "epochs": 10,
+    "optimizer": "Adam",
+    "learning_rate": 0.001,
+    "loss_function": "MSELoss",
+    "model_converged": true
+  }
+}
