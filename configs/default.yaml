@@ -1,0 +1,24 @@
+project:
+  name: deep-portfolio-theory
+  paper_title: "Deep Portfolio Theory"
+  factory_id: proj_8ed17ca5
+
+data:
+  source: null
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+
+model:
+  type: null
+
+training:
+  epochs: 100
+  batch_size: 64
+  learning_rate: 0.001
+  validation_split: 0.2
+
+evaluation:
+  metrics: ["sharpe_ratio", "annual_return", "max_drawdown", "hit_rate"]
+  walk_forward: true
+  fee_bps: 10
+  slippage_bps: 5
