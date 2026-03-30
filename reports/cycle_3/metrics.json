@@ -1,0 +1,45 @@
+{
+  "sharpeRatio": 2.5556,
+  "annualReturn": 0.5057,
+  "maxDrawdown": -0.3297,
+  "hitRate": 0.6301,
+  "totalTrades": 107,
+  "transactionCosts": {
+    "feeBps": 10,
+    "slippageBps": 5,
+    "netSharpe": 2.4646
+  },
+  "walkForward": {
+    "windows": 107,
+    "positiveWindows": 88,
+    "avgOosSharpe": 4.6888
+  },
+  "customMetrics": {
+    "phase": 3,
+    "task": "Walk-Forward Evaluation and Benchmark Implementation",
+    "baseline_1n_sharpe": 2.5556,
+    "baseline_1n_return": 0.5057,
+    "baseline_1n_drawdown": -0.3297,
+    "baseline_1n_volatility": 0.1979,
+    "baseline_1n_hit_rate": 0.6301,
+    "baseline_1n_net_sharpe": 2.4646,
+    "baseline_1n_n_days": 2244,
+    "baseline_1n_windows": 107,
+    "baseline_1n_positive_windows": 88,
+    "baseline_minvar_sharpe": 6.8422,
+    "baseline_minvar_return": 2.8386,
+    "baseline_minvar_drawdown": -0.1089,
+    "baseline_minvar_volatility": 0.4149,
+    "baseline_minvar_hit_rate": 0.7041,
+    "baseline_minvar_net_sharpe": 6.7988,
+    "baseline_minvar_n_days": 2244,
+    "baseline_minvar_windows": 107,
+    "baseline_minvar_positive_windows": 89,
+    "data_start": "2010-01-05",
+    "data_end": "2023-12-29",
+    "n_assets": 82,
+    "train_months": 60,
+    "test_months": 1,
+    "rebalance_freq": "monthly"
+  }
+}

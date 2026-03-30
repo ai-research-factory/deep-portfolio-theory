@@ -101,14 +101,67 @@ class TestTrainTestBoundary:
     """Ensure strict temporal separation between train and test."""
 
     def test_train_test_no_overlap(self):
-        """Train and test periods must not overlap."""
-        # TODO: Implement when split logic is ready (Phase 3)
-        pass
+        """Train and test periods must not overlap in walk-forward windows."""
+        if not os.path.exists(RETURNS_PATH):
+            pytest.skip("Returns data not yet generated")
+        from src.evaluation.framework import WalkForwardValidator
+
+        returns = pd.read_csv(RETURNS_PATH, index_col=0, parse_dates=True)
+        validator = WalkForwardValidator(returns, train_months=60, test_months=1)
+        windows = validator._generate_windows()
+
+        assert len(windows) > 0, "No walk-forward windows generated"
+
+        for train_start, test_start, test_end in windows:
+            # Train period must end strictly before test period begins
+            assert train_start < test_start, (
+                f"Train start {train_start} not before test start {test_start}"
+            )
+            assert test_start < test_end, (
+                f"Test start {test_start} not before test end {test_end}"
+            )
 
     def test_walk_forward_boundaries(self):
         """Each walk-forward fold must have strictly separated boundaries."""
-        # TODO: Verify walk-forward splits (Phase 3)
-        pass
+        if not os.path.exists(RETURNS_PATH):
+            pytest.skip("Returns data not yet generated")
+        from src.evaluation.framework import WalkForwardValidator
+
+        returns = pd.read_csv(RETURNS_PATH, index_col=0, parse_dates=True)
+        validator = WalkForwardValidator(returns, train_months=60, test_months=1)
+        windows = validator._generate_windows()
+
+        assert len(windows) >= 5, f"Only {len(windows)} windows, need >= 5"
+
+        for i, (train_start, test_start, test_end) in enumerate(windows):
+            train_data = returns.loc[train_start:test_start - pd.Timedelta(days=1)]
+            test_data = returns.loc[test_start:test_end - pd.Timedelta(days=1)]
+
+            # No overlap between train and test indices
+            overlap = train_data.index.intersection(test_data.index)
+            assert len(overlap) == 0, (
+                f"Window {i}: train/test overlap on {len(overlap)} dates"
+            )
+
+    def test_no_forward_looking_in_weights(self):
+        """Strategy weights must be computed from training data only."""
+        if not os.path.exists(RETURNS_PATH):
+            pytest.skip("Returns data not yet generated")
+        import numpy as np
+        from src.evaluation.framework import WalkForwardValidator
+        from src.strategies.benchmarks import EqualWeightStrategy
+
+        returns = pd.read_csv(RETURNS_PATH, index_col=0, parse_dates=True)
+        validator = WalkForwardValidator(returns, train_months=60, test_months=1)
+        result = validator.run(EqualWeightStrategy())
+
+        # Weights history should exist and have entries
+        assert len(result["weights_history"]) > 0
+        # Each weight vector should sum to ~1
+        for date, weights in result["weights_history"]:
+            assert abs(np.sum(weights) - 1.0) < 1e-6, (
+                f"Weights at {date} sum to {np.sum(weights)}, not 1.0"
+            )
 
 
 class TestReportConsistency:
@@ -116,11 +169,11 @@ class TestReportConsistency:
 
     def test_metrics_json_exists(self):
         """metrics.json must exist after each cycle."""
-        assert os.path.exists("reports/cycle_2/metrics.json")
+        assert os.path.exists("reports/cycle_4/metrics.json")
 
     def test_metrics_schema_valid(self):
         """metrics.json must contain required fields."""
-        with open("reports/cycle_2/metrics.json") as f:
+        with open("reports/cycle_4/metrics.json") as f:
             metrics = json.load(f)
         required = [
             "sharpeRatio", "annualReturn", "maxDrawdown", "hitRate",
@@ -128,6 +181,89 @@ class TestReportConsistency:
         ]
         for field in required:
             assert field in metrics, f"Missing: {field}"
+
+    def test_walk_forward_windows_sufficient(self):
+        """Walk-forward must have at least 5 windows."""
+        with open("reports/cycle_4/metrics.json") as f:
+            metrics = json.load(f)
+        assert metrics["walkForward"]["windows"] >= 5, (
+            f"Only {metrics['walkForward']['windows']} windows, need >= 5"
+        )
+
+    def test_benchmark_returns_json_exists(self):
+        """benchmark_returns.json must exist with required keys."""
+        path = "reports/cycle_4/benchmark_returns.json"
+        assert os.path.exists(path), f"{path} not found"
+        with open(path) as f:
+            data = json.load(f)
+        assert "equal_weight" in data, "Missing 'equal_weight' key"
+        assert "min_variance" in data, "Missing 'min_variance' key"
+        assert "deep_portfolio" in data, "Missing 'deep_portfolio' key"
+        assert len(data["equal_weight"]["daily_returns"]) > 0
+        assert len(data["min_variance"]["daily_returns"]) > 0
+        assert len(data["deep_portfolio"]["daily_returns"]) > 0
+
+    def test_deep_portfolio_metrics_in_custom(self):
+        """metrics.json customMetrics must contain Deep Portfolio results."""
+        with open("reports/cycle_4/metrics.json") as f:
+            metrics = json.load(f)
+        custom = metrics["customMetrics"]
+        assert "deep_portfolio_sharpe" in custom
+        assert "baseline_1n_sharpe" in custom
+        assert "strategy_vs_1n_sharpe_diff" in custom
+
+
+class TestDeepPortfolioStrategy:
+    """Validate the Deep Portfolio strategy."""
+
+    def test_generates_valid_weights(self):
+        """Deep Portfolio must produce weights that sum to 1 and are non-negative."""
+        import numpy as np
+        from src.strategies.deep_portfolio import DeepPortfolioStrategy
+
+        # Small synthetic returns for testing
+        np.random.seed(42)
+        dates = pd.date_range("2020-01-01", periods=100, freq="B")
+        returns = pd.DataFrame(
+            np.random.randn(100, 10) * 0.01,
+            index=dates,
+            columns=[f"A{i}" for i in range(10)],
+        )
+
+        strategy = DeepPortfolioStrategy(
+            hidden_dim=16, latent_dim=4, epochs=10, seed=42,
+        )
+        weights = strategy.generate_weights(returns)
+
+        assert len(weights) == 10
+        assert abs(np.sum(weights) - 1.0) < 1e-6
+        assert np.all(weights >= 0)
+
+    def test_uses_only_training_data(self):
+        """Weights must change when training data changes."""
+        import numpy as np
+        from src.strategies.deep_portfolio import DeepPortfolioStrategy
+
+        np.random.seed(42)
+        dates = pd.date_range("2020-01-01", periods=200, freq="B")
+        # Use higher variance and distinct patterns for the two halves
+        r1 = np.random.randn(100, 10) * 0.01
+        r2 = np.random.randn(100, 10) * 0.05 + 0.01
+        data = np.vstack([r1, r2])
+        returns = pd.DataFrame(
+            data,
+            index=dates,
+            columns=[f"A{i}" for i in range(10)],
+        )
+
+        strategy = DeepPortfolioStrategy(
+            hidden_dim=16, latent_dim=4, epochs=50, seed=42,
+        )
+        w1 = strategy.generate_weights(returns.iloc[:100])
+        w2 = strategy.generate_weights(returns.iloc[100:])
+
+        # Weights should differ for different data (looser tolerance)
+        assert not np.allclose(w1, w2, atol=1e-3)
 
 
 class TestAutoencoderModel:

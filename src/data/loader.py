@@ -131,6 +131,21 @@ def load_stock_data(config_path: str = CONFIG_PATH) -> pd.DataFrame:
     return returns_df
 
 
+def daily_to_monthly(returns_df: pd.DataFrame) -> pd.DataFrame:
+    """Convert daily returns to monthly returns.
+
+    Compounds daily returns within each month: (1 + r1)(1 + r2)...(1 + rN) - 1
+
+    Args:
+        returns_df: DataFrame of daily returns with DatetimeIndex.
+
+    Returns:
+        DataFrame of monthly returns indexed by month-end date.
+    """
+    monthly = returns_df.resample("M").apply(lambda x: (1 + x).prod() - 1)
+    return monthly
+
+
 def save_returns(returns_df: pd.DataFrame, output_path: str) -> None:
     """Save returns DataFrame to CSV."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
