@@ -7,7 +7,7 @@ proj_8ed17ca5
 PCA, ResidualFactors
 
 ## Current Cycle
-2
+3
 
 ## Objective
 Implement, validate, and iteratively improve the paper's approach with production-quality standards.
@@ -71,7 +71,7 @@ df = df.set_index("timestamp")
 
 ## Preflight チェック（実装開始前に必ず実施）
 
-**Phase の実装コードを書く前に**、以下のチェックを実施し結果を `reports/cycle_2/preflight.md` に保存すること。
+**Phase の実装コードを書く前に**、以下のチェックを実施し結果を `reports/cycle_3/preflight.md` に保存すること。
 
 ### 1. データ境界表
 以下の表を埋めて、未来データ混入がないことを確認:
@@ -107,31 +107,29 @@ df = df.set_index("timestamp")
 
 **preflight.md が作成されるまで、Phase の実装コードに進まないこと。**
 
-## ★ 今回のタスク (Cycle 2)
+## ★ 今回のタスク (Cycle 3)
 
 
-### Phase 2: データパイプラインの構築 [Track ]
+### Phase 3: Walk-Forward評価とベンチマーク実装 [Track ]
 
 **Track**:  (A=論文再現 / B=近傍改善 / C=独自探索)
-**ゴール**: yfinanceを使用して株価データを取得し、リターン計算と前処理を行うパイプラインを構築する。
+**ゴール**: Walk-forward検証の枠組みを実装し、1/Nと最小分散ポートフォリオのバックテストを実行する。
 
 **具体的な作業指示**:
-1. `src/data/loader.py`を作成します。
-2. S&P 100の構成銘柄リストをハードコードで定義します（80銘柄程度）。
-3. `load_stock_data`関数を実装し、`yfinance.download`を使用して2010-01-01から2023-12-31までの日次調整済み終値を取得します。
-4. 取得した価格データから日次リターンを計算します。NaN値は前方・後方補完（`ffill().bfill()`）で処理してください。
-5. 処理済みのリターンデータを`data/processed/sp100_daily_returns.csv`として保存します。
-6. このローダーを呼び出す`scripts/prepare_data.py`を作成してください。
+1. `src/evaluation/framework.py`に`WalkForwardValidator`クラスを実装します。`__init__`でデータ、学習期間（60ヶ月）、テスト期間（1ヶ月）、リバランス頻度（月次）を受け取ります。
+2. `src/strategies/benchmarks.py`を作成し、`EqualWeightStrategy`と`MinimumVarianceStrategy`の2つのクラスを実装します。各クラスは`generate_weights(returns_data)`メソッドを持ち、ポートフォリオのウェイトを返します。
+3. `WalkForwardValidator`に`run`メソッドを実装し、指定された戦略でウォークフォワードテストを実行します。各リバランス日に戦略の`generate_weights`を呼び出し、テスト期間のポートフォリオリターンを計算・記録します。
+4. `scripts/run_benchmarks.py`を作成し、上記クラスを使って1/Nと最小分散戦略のバックテストを実行し、結果のポートフォリオ日次リターンを`reports/cycle_3/benchmark_returns.json`に保存します。
 
 **期待される出力ファイル**:
-- src/data/loader.py
-- scripts/prepare_data.py
-- data/processed/sp100_daily_returns.csv
+- src/evaluation/framework.py
+- src/strategies/benchmarks.py
+- scripts/run_benchmarks.py
+- reports/cycle_3/benchmark_returns.json
 
 **受入基準 (これを全て満たすまで完了としない)**:
-- sp100_daily_returns.csvが生成され、指定期間のリターンデータが含まれている。
-- 生成されたCSVファイル内にNaN値が存在しない。
-- 銘柄数は80以上、データ行数は3000行以上であること。
+- benchmark_returns.jsonが生成され、'equal_weight'と'min_variance'のキーでリターン時系列データが保存されている。
+- リターン時系列の長さが、全テスト期間の日数と一致する。
 
 
 
@@ -146,7 +144,7 @@ df = df.set_index("timestamp")
 
 
 ## スコア推移
-Cycle 1: 45%
+Cycle 1: 45% → Cycle 2: 45%
 
 
 
@@ -158,16 +156,25 @@ Cycle 1: 45%
 2. [object Object]
 3. [object Object]
 ### マネージャー指示 (次のアクション)
-1. 【最優先】src/train.pyをリファクタリングし、学習率、エポック数、バッチサイズ、ファイルパスなどのハイパーパラメータがconfigs/default.yamlからHydra経由で読み込まれるように修正する。ハードコードされた値を全て削除すること。
-2. 【重要】tests/test_models.pyを新規作成し、src/models/autoencoder.pyのAutoencoderモデルについて、ダミーのテンソルを入力した際の出力次元が入力次元と一致することをアサートするユニットテストを実装する。
-3. 【推奨】開発プロセス遵守のため、Cycle 2の作業内容を記述したpreflight.mdを作成する。このファイルには、本サイクルで指摘された設定の外部化とテスト追加の計画を含めること。
+1. 【REPLAN: 評価設計修正】
+primaryBlocker: エンドツーエンドの学習・評価パイプラインの欠如
+
+以下を最優先で実施:
+1. Walk-forward validationの実装を確認(train/test境界の厳密分離)
+2. フォワードルッキングがないことをテストで証明
+3. metrics.jsonのwalkForward.windowsが5以上であることを確認
+
+完了条件: `src/train.py`が`src/data/loader.py`から取得した実データ（1期間分で可）を使って学習を完了させ、モデルアーティファクトを保存する。さらに、`src/evaluate.py`がそのモデルをロードし、次の期間のデータで推論・評価を実行する。この一連の流れがエラーなく完了すること。
+2. 【最優先】`src/train.py`の合成データ利用を完全に廃止し、`src/data/loader.py`の`load_sp100_data`関数を呼び出して実データ（日次リターン）を学習に利用するよう修正する。まずは最初の学習期間のデータのみを対象として、パイプラインを接続することを最優先とする。
+3. 【重要】`src/evaluate.py`にWalk-forward検証の骨格を実装する。時間軸に沿ってデータを学習期間と検証期間に分割する`TimeBasedSplitter`のようなクラスを作成し、最初の1ウィンドウ分の学習データと検証データを生成するロジックを構築する。この分割ロジックは`src/train.py`から呼び出せるようにする。
+4. 【推奨】`src/data/loader.py`に、日次リターンを月次リターンに変換する機能を追加する。Pandasの`resample('M').apply(lambda x: (1 + x).prod() - 1)`を適用するヘルパー関数を作成し、設定ファイル（`configs/main.yaml`）のフラグで日次/月次の切り替えを可能にする。
 
 
 ## 全体Phase計画 (参考)
 
 ✓ Phase 1: コアAutoencoderモデルの実装 — PyTorchで基本的なAutoencoderモデルを実装し、合成データで学習が実行できる状態にする。
-→ Phase 2: データパイプラインの構築 — yfinanceを使用して株価データを取得し、リターン計算と前処理を行うパイプラインを構築する。
-  Phase 3: Walk-Forward評価とベンチマーク実装 — Walk-forward検証の枠組みを実装し、1/Nと最小分散ポートフォリオのバックテストを実行する。
+✓ Phase 2: データパイプラインの構築 — yfinanceを使用して株価データを取得し、リターン計算と前処理を行うパイプラインを構築する。
+→ Phase 3: Walk-Forward評価とベンチマーク実装 — Walk-forward検証の枠組みを実装し、1/Nと最小分散ポートフォリオのバックテストを実行する。
   Phase 4: Deep Portfolio戦略の実装 — AutoencoderをWalk-Forwardの枠組みに統合し、Deep Portfolio戦略のバックテストを実行する。
   Phase 5: パフォーマンス評価指標とレポート作成 — 全戦略のパフォーマンスを計算・比較するレポートを生成する。
   Phase 6: Denoising Autoencoder (DAE) の実装と評価 — Denoising Autoencoderを実装し、そのパフォーマンスを既存戦略と比較する。
@@ -261,9 +268,9 @@ Cycle 1: 45%
 
 ## 出力ファイル
 以下のファイルを保存してから完了すること:
-- `reports/cycle_2/preflight.md` — Preflight チェック結果（必須、実装前に作成）
-- `reports/cycle_2/metrics.json` — 下記スキーマに従う（必須）
-- `reports/cycle_2/technical_findings.md` — 実装内容、結果、観察事項
+- `reports/cycle_3/preflight.md` — Preflight チェック結果（必須、実装前に作成）
+- `reports/cycle_3/metrics.json` — 下記スキーマに従う（必須）
+- `reports/cycle_3/technical_findings.md` — 実装内容、結果、観察事項
 
 ### metrics.json 必須スキーマ（Single Source of Truth）
 ```json
