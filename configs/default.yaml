@@ -4,18 +4,25 @@ project:
   factory_id: proj_8ed17ca5
 
 data:
-  source: null
-  start_date: "2020-01-01"
-  end_date: "2024-12-31"
+  source: "arf_api"
+  api_base_url: "https://ai.1s.xyz/api/data/ohlcv"
+  start_date: "2010-01-01"
+  end_date: "2023-12-31"
+  interval: "1d"
+  output_dir: "data/processed"
 
 model:
-  type: null
+  type: "autoencoder"
+  input_dim: null  # determined by number of assets
+  hidden_dim: 128
+  latent_dim: 32
 
 training:
   epochs: 100
   batch_size: 64
   learning_rate: 0.001
   validation_split: 0.2
+  seed: 42
 
 evaluation:
   metrics: ["sharpe_ratio", "annual_return", "max_drawdown", "hit_rate"]

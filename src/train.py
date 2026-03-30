@@ -1,7 +1,6 @@
 """Training script for the Autoencoder model.
 
-Trains an Autoencoder on synthetic data (Phase 1) to validate that the
-architecture learns to reconstruct inputs through the bottleneck.
+Loads hyperparameters from configs/default.yaml.
 """
 
 import json
@@ -9,31 +8,48 @@ import os
 
 import torch
 import torch.nn as nn
+import yaml
 
 from src.models.autoencoder import Autoencoder
 
 # Paths
 MODELS_DIR = "models"
-REPORTS_DIR = "reports/cycle_1"
+CONFIG_PATH = "configs/default.yaml"
 
 
-def train(
-    input_dim: int = 256,
-    hidden_dim: int = 128,
-    latent_dim: int = 32,
-    n_samples: int = 1000,
-    epochs: int = 10,
-    lr: float = 1e-3,
-    seed: int = 42,
-) -> dict:
+def load_config(config_path: str = CONFIG_PATH) -> dict:
+    """Load configuration from YAML file."""
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def train(config_path: str = CONFIG_PATH, cycle: int = 1) -> dict:
     """Train the autoencoder and return the loss log.
+
+    Args:
+        config_path: Path to YAML config file.
+        cycle: Current cycle number (for report output directory).
 
     Returns:
         dict mapping epoch number (str) to loss value.
     """
+    cfg = load_config(config_path)
+    model_cfg = cfg["model"]
+    train_cfg = cfg["training"]
+
+    input_dim = model_cfg.get("input_dim") or 256
+    hidden_dim = model_cfg["hidden_dim"]
+    latent_dim = model_cfg["latent_dim"]
+    epochs = train_cfg["epochs"]
+    lr = train_cfg["learning_rate"]
+    seed = train_cfg["seed"]
+
+    reports_dir = f"reports/cycle_{cycle}"
+
     torch.manual_seed(seed)
 
-    # Synthetic data for architecture validation
+    # Synthetic data for architecture validation (Phase 1)
+    n_samples = 1000
     data = torch.rand(n_samples, input_dim)
 
     model = Autoencoder(input_dim=input_dim, hidden_dim=hidden_dim, latent_dim=latent_dim)
@@ -61,8 +77,8 @@ def train(
     print(f"Model saved to {model_path}")
 
     # Save loss log
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-    log_path = os.path.join(REPORTS_DIR, "loss_log.json")
+    os.makedirs(reports_dir, exist_ok=True)
+    log_path = os.path.join(reports_dir, "loss_log.json")
     with open(log_path, "w") as f:
         json.dump(loss_log, f, indent=2)
     print(f"Loss log saved to {log_path}")
