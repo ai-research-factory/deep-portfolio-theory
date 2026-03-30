@@ -1,10 +1,12 @@
 """Deep Portfolio strategy using Autoencoder factor portfolios.
 
 Implements the core idea from 'Deep Portfolio Theory': train an autoencoder
-on asset returns, then extract the decoder's last-layer weights as factor
-portfolios. The portfolio is constructed by combining these factor portfolios
-into a long-only allocation.
+on asset returns, then extract the decoder's first-layer weights as factor
+portfolios. The portfolio is constructed by equal-weight combining these
+factor portfolios into a long-only allocation.
 """
+
+import logging
 
 import numpy as np
 import pandas as pd
@@ -13,15 +15,20 @@ import torch.nn as nn
 
 from src.models.autoencoder import Autoencoder
 
+logger = logging.getLogger(__name__)
+
 
 class DeepPortfolioStrategy:
     """Deep Portfolio strategy based on autoencoder decoder weights.
 
     For each rebalancing window:
-    1. Train an autoencoder on the training period's daily returns.
-    2. Extract the decoder's last linear layer weights (shape: hidden_dim x n_assets).
-       Each row is a 'factor portfolio' mapping a latent factor to asset weights.
-    3. Compute the absolute contribution of each factor portfolio and combine them.
+    1. Train an autoencoder on the training period's returns (monthly).
+    2. Extract the decoder's first linear layer weights (decoder[0]).
+       Shape: (hidden_dim, latent_dim) — each column is a factor portfolio
+       mapping from latent space to hidden space, but we need the mapping
+       from latent space to asset space. Per the paper, we use decoder[0].weight
+       which has shape (hidden_dim, latent_dim).
+    3. Combine factor portfolios with equal weights.
     4. Normalize to produce long-only weights summing to 1.
 
     Args:
@@ -52,8 +59,13 @@ class DeepPortfolioStrategy:
     def generate_weights(self, returns_data: pd.DataFrame) -> np.ndarray:
         """Train autoencoder and extract portfolio weights from decoder.
 
+        Per the paper, portfolio weights are derived from the decoder's first
+        layer (decoder[0]), which maps latent factors to the hidden layer.
+        Combined with decoder's second layer, this gives factor portfolios
+        in asset space.
+
         Args:
-            returns_data: DataFrame of daily returns (training period only).
+            returns_data: DataFrame of returns (training period only).
 
         Returns:
             Array of long-only portfolio weights summing to 1.
@@ -74,8 +86,11 @@ class DeepPortfolioStrategy:
         # Train the autoencoder
         n_samples = data_tensor.shape[0]
         model.train()
+        final_loss = 0.0
         for epoch in range(self.epochs):
             indices = torch.randperm(n_samples)
+            epoch_loss = 0.0
+            n_batches = 0
             for start in range(0, n_samples, self.batch_size):
                 batch_idx = indices[start : start + self.batch_size]
                 batch = data_tensor[batch_idx]
@@ -85,20 +100,34 @@ class DeepPortfolioStrategy:
                 loss = criterion(output, batch)
                 loss.backward()
                 optimizer.step()
+                epoch_loss += loss.item()
+                n_batches += 1
+            final_loss = epoch_loss / max(n_batches, 1)
 
-        # Extract decoder last layer weights
-        # decoder[-1] is Linear(hidden_dim, n_assets)
-        # weight shape: (n_assets, hidden_dim) — PyTorch stores as (out_features, in_features)
-        decoder_weights = model.decoder[-1].weight.detach().numpy()
-        # decoder_weights shape: (n_assets, hidden_dim)
+        logger.info(
+            f"AE trained on {n_samples} samples, {n_assets} assets, "
+            f"final loss={final_loss:.6f}"
+        )
 
-        # Each column of decoder_weights is a factor portfolio's contribution to assets.
-        # Combine by taking the mean absolute weight across factors, which captures
-        # how important each asset is across all learned factors.
-        # This follows the paper's approach of using decoder weights as factor loadings.
-        asset_importance = np.abs(decoder_weights).mean(axis=1)
+        # Extract factor portfolios from decoder
+        # decoder structure: Linear(latent, hidden) -> ReLU -> Linear(hidden, n_assets)
+        # decoder[0].weight shape: (hidden_dim, latent_dim)
+        # decoder[2].weight shape: (n_assets, hidden_dim)
+        #
+        # The full decoder mapping: z -> W1*z + b1 -> ReLU -> W2*h + b2
+        # Factor portfolios in asset space: W2 @ W1 gives (n_assets, latent_dim)
+        # Each column is a factor portfolio showing how each latent factor
+        # maps to asset weights through the full decoder.
+        W1 = model.decoder[0].weight.detach().numpy()  # (hidden_dim, latent_dim)
+        W2 = model.decoder[2].weight.detach().numpy()  # (n_assets, hidden_dim)
+        factor_portfolios = W2 @ W1  # (n_assets, latent_dim)
 
-        # Normalize to long-only weights summing to 1
-        weights = asset_importance / asset_importance.sum()
+        # Equal-weight combination of all factor portfolios
+        # Average across latent factors to get a single set of asset weights
+        raw_weights = factor_portfolios.mean(axis=1)  # (n_assets,)
+
+        # Convert to long-only: take absolute values and normalize
+        weights = np.abs(raw_weights)
+        weights = weights / weights.sum()
 
         return weights

@@ -6,19 +6,19 @@ This paper proposes using autoencoders and denoising autoencoders to construct i
 
 ## Current Status — Cycle 4, Phase 4
 
-Deep Portfolio strategy implemented and evaluated via walk-forward backtest against benchmarks.
+Deep Portfolio strategy implemented with **monthly returns** (paper-aligned) and evaluated via walk-forward backtest. Key improvements in this cycle: data quality fix (bfill phantom returns), monthly training, decoder[0] weight extraction, MinVar weight caps.
 
 ### Results (from `reports/cycle_4/metrics.json`)
 
 | Strategy | Sharpe | Ann. Return | Max Drawdown | Net Sharpe | Turnover |
 |---|---|---|---|---|---|
-| **Deep Portfolio (AE)** | 2.4420 | 49.62% | -33.28% | 2.3534 | 3.42% |
-| Equal Weight (1/N) | 2.5556 | 50.57% | -32.97% | 2.4646 | 0.00% |
-| Min Variance | 15.4913 | 613.70% | -16.38% | 15.4459 | 5.69% |
+| **Deep Portfolio (AE)** | 0.9620 | 20.91% | -36.46% | 0.8792 | 20.42% |
+| Equal Weight (1/N) | 1.0077 | 19.94% | -34.07% | 0.9167 | 0.00% |
+| Min Variance (5% cap) | 1.0418 | 14.32% | -22.72% | 0.9109 | 8.39% |
 
-Walk-forward: 107 windows, 2,244 OOS days (2015-02 to 2023-12). Deep Portfolio positive in 87/107 windows.
+Walk-forward: 106 windows, 2,225 OOS days (2015-03 to 2023-12). Deep Portfolio positive in 72/106 windows.
 
-Note: Min Variance results are inflated due to extreme concentration — to be addressed in future phases.
+Deep Portfolio vs 1/N: Sharpe -0.05 (slightly underperforms), Return +0.97pp (outperforms on raw return).
 
 ### Prior Cycles
 
@@ -40,11 +40,8 @@ pip install -e ".[dev]"
 # Prepare data (fetch from ARF Data API)
 python scripts/prepare_data.py
 
-# Train the autoencoder
-python -m src.train
-
-# Run walk-forward backtest (all strategies)
-python scripts/run_benchmarks.py
+# Run Deep Portfolio walk-forward backtest (monthly training)
+python scripts/run_deep_portfolio.py
 
 # Run tests
 pytest tests/
@@ -57,7 +54,7 @@ src/
   models/
     autoencoder.py       # Autoencoder model (encoder-decoder with bottleneck)
   data/
-    loader.py            # S&P 100 data fetching and returns calculation
+    loader.py            # S&P 100 data fetching, daily and monthly returns
   evaluation/
     framework.py         # WalkForwardValidator for OOS backtesting
   strategies/
@@ -68,12 +65,13 @@ configs/
   default.yaml           # Hyperparameters and data configuration
 scripts/
   prepare_data.py        # Data pipeline runner
-  run_benchmarks.py      # Walk-forward backtest runner
+  run_benchmarks.py      # Walk-forward backtest runner (legacy)
+  run_deep_portfolio.py  # Deep Portfolio backtest with monthly training
 reports/
-  cycle_1/               # Phase 1 results
-  cycle_2/               # Phase 2 results
-  cycle_3/               # Phase 3 results (benchmarks)
-  cycle_4/               # Phase 4 results (Deep Portfolio)
+  cycle_4/               # Phase 4 results (Deep Portfolio, monthly)
+docs/
+  paper_spec.md          # Paper parameter specification
+  open_questions.md      # Outstanding questions and limitations
 tests/
   test_data_integrity.py # Data integrity, leakage, and strategy tests
   test_models.py         # Autoencoder unit tests

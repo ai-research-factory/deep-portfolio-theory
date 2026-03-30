@@ -32,4 +32,4 @@ evaluation:
   rebalance_freq: "MS"
   fee_bps: 10
   slippage_bps: 5
-  returns_freq: "daily"  # "daily" or "monthly"
+  returns_freq: "monthly"  # "daily" or "monthly" — paper uses monthly

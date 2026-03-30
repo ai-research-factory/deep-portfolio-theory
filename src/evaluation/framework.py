@@ -12,10 +12,14 @@ class WalkForwardValidator:
     """Walk-forward out-of-sample validator for portfolio strategies.
 
     Args:
-        returns: DataFrame of daily asset returns (date index, ticker columns).
+        returns: DataFrame of asset returns (date index, ticker columns).
+            Can be daily or monthly frequency.
         train_months: Number of months in the training window (default 60).
         test_months: Number of months in the test window (default 1).
         rebalance_freq: Rebalance frequency string for pd.offsets (default 'MS' = month start).
+        daily_returns: Optional DataFrame of daily returns for computing daily
+            portfolio returns during the OOS period. If None, returns are used
+            directly (appropriate when returns are already daily).
     """
 
     def __init__(
@@ -24,11 +28,13 @@ class WalkForwardValidator:
         train_months: int = 60,
         test_months: int = 1,
         rebalance_freq: str = "MS",
+        daily_returns: pd.DataFrame | None = None,
     ):
         self.returns = returns
         self.train_months = train_months
         self.test_months = test_months
         self.rebalance_freq = rebalance_freq
+        self.daily_returns = daily_returns
 
     def _generate_windows(self) -> list[tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
         """Generate (train_start, test_start, test_end) tuples for walk-forward splits.
@@ -89,7 +95,11 @@ class WalkForwardValidator:
             train_returns = self.returns.loc[
                 train_start : test_start - pd.Timedelta(days=1)
             ]
-            test_returns = self.returns.loc[
+
+            # For OOS evaluation, use daily_returns if available (allows
+            # training on monthly data but evaluating on daily granularity)
+            eval_source = self.daily_returns if self.daily_returns is not None else self.returns
+            test_returns = eval_source.loc[
                 test_start : test_end - pd.Timedelta(days=1)
             ]
 
@@ -104,7 +114,7 @@ class WalkForwardValidator:
 
             weights = np.asarray(weights, dtype=np.float64)
 
-            # Compute daily portfolio returns for the test period
+            # Compute portfolio returns for the test period
             port_returns = test_returns.values @ weights
             port_series = pd.Series(port_returns, index=test_returns.index)
             all_portfolio_returns.append(port_series)

@@ -35,11 +35,19 @@ class MinimumVarianceStrategy:
     from training data only.
     """
 
+    def __init__(self, max_weight: float = 0.05):
+        """Initialize with per-asset weight cap.
+
+        Args:
+            max_weight: Maximum weight per asset (default 0.05 = 5%).
+        """
+        self.max_weight = max_weight
+
     def generate_weights(self, returns_data: pd.DataFrame) -> np.ndarray:
         """Compute long-only minimum variance portfolio weights.
 
         Uses scipy.optimize.minimize with SLSQP to solve the constrained
-        quadratic program: min w^T Σ w, s.t. w >= 0, sum(w) = 1.
+        quadratic program: min w^T Σ w, s.t. w >= 0, w_i <= max_weight, sum(w) = 1.
 
         Args:
             returns_data: DataFrame of historical returns for covariance estimation.
@@ -49,10 +57,12 @@ class MinimumVarianceStrategy:
         """
         cov_matrix = returns_data.cov().values
         n_assets = cov_matrix.shape[0]
+        n_samples = returns_data.shape[0]
 
-        # Regularize covariance matrix for numerical stability
+        # Regularize covariance matrix for numerical stability.
+        # Use higher shrinkage when n_samples < n_assets (rank-deficient case).
         diag = np.diag(np.diag(cov_matrix))
-        shrinkage = 0.1
+        shrinkage = 0.5 if n_samples < n_assets else 0.1
         cov_reg = (1 - shrinkage) * cov_matrix + shrinkage * diag
 
         def portfolio_variance(w):
@@ -64,8 +74,8 @@ class MinimumVarianceStrategy:
         # Constraints: weights sum to 1
         constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
 
-        # Bounds: long-only (0 <= w_i <= 1)
-        bounds = [(0.0, 1.0)] * n_assets
+        # Bounds: long-only with per-asset upper bound
+        bounds = [(0.0, self.max_weight)] * n_assets
 
         result = minimize(
             portfolio_variance,

@@ -47,6 +47,18 @@ class TestNoFutureDataLeakage:
         # Returns should be reasonable (no look-ahead artifacts)
         assert df.abs().max().max() < 1.0, "Suspicious return > 100%"
 
+    def test_no_bfill_phantom_returns(self):
+        """Pre-IPO periods must not have constant non-zero returns from bfill."""
+        if not os.path.exists(RETURNS_PATH):
+            pytest.skip("Returns data not yet generated")
+        df = pd.read_csv(RETURNS_PATH, index_col=0, parse_dates=True)
+        # Check annualized return for each stock — no stock should exceed 200%/yr
+        ann_ret = df.mean() * 252
+        assert ann_ret.max() < 2.0, (
+            f"Suspicious annualized return > 200%: "
+            f"{ann_ret.idxmax()} = {ann_ret.max():.2f}"
+        )
+
     def test_scaler_fit_on_train_only(self):
         """Scalers/normalizers must be fit on training data only."""
         # N/A for Phase 2 — no scaler used yet
@@ -211,6 +223,16 @@ class TestReportConsistency:
         assert "deep_portfolio_sharpe" in custom
         assert "baseline_1n_sharpe" in custom
         assert "strategy_vs_1n_sharpe_diff" in custom
+
+    def test_deep_portfolio_ae_returns_exists(self):
+        """deep_portfolio_ae_returns.json must exist with return data."""
+        path = "reports/cycle_4/deep_portfolio_ae_returns.json"
+        assert os.path.exists(path), f"{path} not found"
+        with open(path) as f:
+            data = json.load(f)
+        assert "daily_returns" in data
+        assert len(data["daily_returns"]) > 0
+        assert data["strategy"] == "deep_portfolio_ae"
 
 
 class TestDeepPortfolioStrategy:

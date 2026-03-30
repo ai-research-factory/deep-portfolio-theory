@@ -118,23 +118,27 @@ def load_stock_data(config_path: str = CONFIG_PATH) -> pd.DataFrame:
     # Drop the first row (NaN from pct_change)
     returns_df = returns_df.iloc[1:]
 
-    # Handle remaining NaN values: forward fill then backward fill
-    returns_df = returns_df.ffill().bfill()
+    # Fill NaN returns with 0 (stock not yet trading = no return).
+    # Do NOT use bfill, which would propagate the first real return
+    # backward into pre-IPO periods, creating phantom returns.
+    returns_df = returns_df.fillna(0.0)
 
-    # Drop any columns still containing NaN (insufficient data)
-    nan_cols = returns_df.columns[returns_df.isna().any()]
-    if len(nan_cols) > 0:
-        print(f"Dropping columns with remaining NaN: {list(nan_cols)}")
-        returns_df = returns_df.dropna(axis=1)
+    # Drop any columns that are entirely zero (no real data at all)
+    all_zero_cols = returns_df.columns[(returns_df == 0).all()]
+    if len(all_zero_cols) > 0:
+        print(f"Dropping columns with no data: {list(all_zero_cols)}")
+        returns_df = returns_df.drop(columns=all_zero_cols)
 
     print(f"\nFinal dataset: {returns_df.shape[0]} rows × {returns_df.shape[1]} columns")
     return returns_df
 
 
 def daily_to_monthly(returns_df: pd.DataFrame) -> pd.DataFrame:
-    """Convert daily returns to monthly returns.
+    """Convert daily returns to monthly returns using month-end prices.
 
-    Compounds daily returns within each month: (1 + r1)(1 + r2)...(1 + rN) - 1
+    Extracts the last business day price each month from the underlying
+    daily returns, then computes month-over-month percentage changes.
+    This aligns with the paper's use of monthly return data.
 
     Args:
         returns_df: DataFrame of daily returns with DatetimeIndex.
@@ -142,8 +146,35 @@ def daily_to_monthly(returns_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame of monthly returns indexed by month-end date.
     """
-    monthly = returns_df.resample("M").apply(lambda x: (1 + x).prod() - 1)
-    return monthly
+    # Reconstruct price levels from daily returns (cumulative product)
+    price_levels = (1 + returns_df).cumprod()
+    # Resample to month-end: take the last available observation each month
+    monthly_prices = price_levels.resample("ME").last()
+    # Compute monthly returns as pct_change of month-end prices
+    monthly_returns = monthly_prices.pct_change().dropna()
+    return monthly_returns
+
+
+def load_monthly_returns(config_path: str = CONFIG_PATH) -> pd.DataFrame:
+    """Load daily returns from cache and convert to monthly.
+
+    Args:
+        config_path: Path to YAML config file.
+
+    Returns:
+        DataFrame of monthly returns with month-end DatetimeIndex.
+    """
+    cfg = load_config(config_path)
+    output_dir = cfg["data"]["output_dir"]
+    daily_path = os.path.join(output_dir, "sp100_daily_returns.csv")
+
+    if not os.path.exists(daily_path):
+        raise FileNotFoundError(
+            f"{daily_path} not found. Run scripts/prepare_data.py first."
+        )
+
+    daily_returns = pd.read_csv(daily_path, index_col=0, parse_dates=True)
+    return daily_to_monthly(daily_returns)
 
 
 def save_returns(returns_df: pd.DataFrame, output_path: str) -> None:
